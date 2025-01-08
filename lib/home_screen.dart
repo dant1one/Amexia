@@ -88,15 +88,80 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _sendOperationToServer(String trade, String currency, int amount, double rate) async {
+    final dio = Dio();
+    dio.options.headers["Authorization"] = "Bearer ${globals.accessToken}";
+
+    if (rate <= 0) {
+      print("Ошибка: курс должен быть больше нуля");
+    }
+
+    try {
+      final response = await dio.post(
+        endpoints.exchangeCreatePostEndpoint,
+        data: {
+          'time': DateTime.now().toIso8601String(),
+          'trade': trade,
+          'currency': currency,
+          'amount': amount,
+          "rate": rate,
+        },
+      );
+
+      if (response.statusCode == 201) {
+        print('Операция добавлена успешно');
+        setState(() {
+          amountController.clear();
+          exchangeRateController.clear();
+          resultController.clear();
+        });
+      }
+    } catch (e) {
+      print(e);
+    }
+  }
+
+  Future<void> _calculateResult() async {
+    if (amountController.text.isNotEmpty && exchangeRateController.text.isNotEmpty) {
+      final amount = double.tryParse(amountController.text);
+      final exchangeRate = double.tryParse(exchangeRateController.text);
+
+      if (amount != null && exchangeRate != null) {
+        if (amount > 0 && exchangeRate > 0) {
+          final total = amount * exchangeRate;
+          setState(() {
+            resultController.text = total.toStringAsFixed(2);
+          });
+        } else {
+          setState(() {
+            resultController.text = "";
+          });
+          _showMessage('Сумма и курс должны быть больше нуля!');
+        }
+      } else {
+        setState(() {
+          resultController.text = "";
+        });
+        _showMessage('Введите корректные данные!');
+      }
+    } else {
+      setState(() {
+        resultController.text = "";
+      });
+    }
+  }
+
   void _addOperation() {
-    if (amountController.text.isEmpty && exchangeRateController.text.isEmpty) {
+    if (amountController.text.isEmpty || exchangeRateController.text.isEmpty) {
       _showMessage('Введите корректные данные!');
       return;
     } else {
-      int? amount = int.tryParse(amountController.text);
-      double? result = double.tryParse(resultController.text);
-      if (amount == null || result == null || amount <= 0 || result <= 0) {
-        _showMessage('Сумма и результат должны быть больше нуля!');
+      final amount = double.tryParse(amountController.text);
+      final result = double.tryParse(resultController.text);
+      final exchangeRate = double.tryParse(exchangeRateController.text);
+
+      if (amount == null || result == null || amount <= 0 || result <= 0 || exchangeRate == null || exchangeRate <= 0) {
+        _showMessage('Сумма, результат и курс должны быть больше нуля!');
         return;
       } else {
         if (_selectedCurrency == null) {
@@ -113,10 +178,10 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           } else {
             if (isbuy) {
-              _sendOperationToServer("buy", _selectedCurrency!, amount, result);
+              _sendOperationToServer("buy", _selectedCurrency!, amount.toInt(), exchangeRate);
             }
             if (issell) {
-              _sendOperationToServer("sell", _selectedCurrency!, amount, result);
+              _sendOperationToServer("sell", _selectedCurrency!, amount.toInt(), exchangeRate);
             }
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -142,33 +207,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final result = currencySystemDataClassFromJson(response.data.toString());
         setState(() {
           currencies = result;
-        });
-      }
-    } catch (e) {
-      print(e);
-    }
-  }
-
-  Future<void> _sendOperationToServer(String trade ,String currency , int ammount, double rate) async {
-    final dio = Dio();
-    dio.options.headers["Authorization"] = "Bearer ${globals.accessToken}";
-    try {
-      final response = await dio.post(
-        endpoints.exchangeCreatePostEndpoint,
-        data: {
-          'time': DateTime.now().toIso8601String(),
-          'trade': trade,
-          'currency': currency,
-          'amount': ammount,
-          "rate" : rate
-        },
-      );
-      if (response.statusCode == 201) {
-        print('Операция добавлена успешно');
-        setState(() {
-          amountController.clear();
-          exchangeRateController.clear();
-          resultController.clear();
         });
       }
     } catch (e) {
@@ -214,23 +252,6 @@ class _HomeScreenState extends State<HomeScreen> {
     initVoid();
   }
 
-  Future<void> _calculateResult() async {
-    if (amountController.text.isNotEmpty &&
-        exchangeRateController.text.isNotEmpty) {
-      final amount = double.tryParse(amountController.text);
-      final exchangeRate = double.tryParse(exchangeRateController.text);
-
-      final result = amount ! * exchangeRate!;
-      setState(() {
-        resultController.text = result.toStringAsFixed(2);
-      });
-    }
-    else {
-      setState(() {
-        resultController.text = "";
-      });
-    }
-  }
 
   Widget _buildBurgerMenu() {
     return Drawer(
